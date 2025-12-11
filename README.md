@@ -1,31 +1,57 @@
 # 🧠 Parkinson's Proteomics AI - Full Stack Application
 
-A comprehensive web application for Parkinson's Disease prediction using proteomics data and machine learning.
+A comprehensive mobile application for Parkinson's Disease prediction using proteomics data and machine learning.
 
-## 📋 Table of Contents
+> **✅ FULLY INTEGRATED**: Frontend and Backend are now connected and working together!
 
-- [Overview](#overview)
-- [Architecture](#architecture)
-- [Features](#features)
-- [Tech Stack](#tech-stack)
-- [Project Structure](#project-structure)
-- [Installation](#installation)
-- [Running the Application](#running-the-application)
-- [API Documentation](#api-documentation)
-- [Frontend Integration](#frontend-integration)
-- [Model Information](#model-information)
-- [Contributing](#contributing)
+## 📋 Quick Links
+
+- 📖 [Integration Guide](INTEGRATION_GUIDE.md) - Complete setup instructions
+- ⚡ [Quick Reference](QUICK_REFERENCE.md) - Commands and API endpoints
+- 📚 [API Documentation](http://localhost:8000/docs) - Interactive API docs (when backend is running)
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+- Python 3.8+ and pip
+- Node.js 16+ and npm
+- Expo CLI (`npm install -g expo-cli`)
+- Model files: `lgb_model_*.pkl` and `scaler_*.pkl` in project root
+
+### Start the Application
+
+**Option 1: One Command (Recommended)**
+```bash
+./start.sh
+```
+
+**Option 2: Manual Start**
+```bash
+# Terminal 1 - Backend
+cd backend
+python3 -m uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+
+# Terminal 2 - Frontend  
+npm install  # First time only
+npm start
+```
+
+Then press `i` for iOS or `a` for Android in the Expo terminal.
 
 ---
 
 ## 🎯 Overview
 
-This application provides a complete solution for predicting Parkinson's Disease risk using proteomics biomarkers. It includes:
+This application provides a complete solution for predicting Parkinson's Disease risk using proteomics biomarkers. 
 
-- **Machine Learning Backend**: FastAPI service for real-time predictions using a trained LightGBM model
-- **User Management**: Django backend for patient registration, authentication, and prediction history
-- **Mobile Frontend**: React Native (Expo) app with login/register screens and result visualization
-- **Feature Importance Analysis**: Detailed breakdown of the most influential protein biomarkers
+**What's Included:**
+- ✅ **FastAPI Backend**: Real-time predictions using trained LightGBM model
+- ✅ **React Native Frontend**: Beautiful mobile UI with CSV upload and results visualization  
+- ✅ **JWT Authentication**: Secure user registration and login
+- ✅ **Feature Importance**: Detailed breakdown of the most influential protein biomarkers
+- ✅ **Real-time Analysis**: Upload CSV with 50 protein biomarkers and get instant predictions
 
 ---
 
@@ -33,29 +59,25 @@ This application provides a complete solution for predicting Parkinson's Disease
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                     Mobile App (React Native)                    │
+│                  Mobile App (React Native + Expo)               │
 │         Login/Register → Upload CSV → View Predictions          │
 └─────────────────────────────┬───────────────────────────────────┘
                               │
                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                         API Gateway                              │
-├─────────────────────────────┬───────────────────────────────────┤
-│                             │                                    │
-│  ┌──────────────────────┐   │   ┌──────────────────────────┐   │
-│  │    FastAPI (8000)    │   │   │     Django (8001)        │   │
-│  │  ─────────────────   │   │   │  ────────────────────    │   │
-│  │  • /model/infer      │   │   │  • /auth/login           │   │
-│  │  • /model/predict-csv│   │   │  • /auth/signup          │   │
-│  │  • /features/import  │   │   │  • /predictions/history  │   │
-│  └──────────┬───────────┘   │   └──────────┬───────────────┘   │
-│             │               │              │                    │
-│             ▼               │              ▼                    │
-│  ┌──────────────────────┐   │   ┌──────────────────────────┐   │
-│  │   LightGBM Model     │   │   │    SQLite/PostgreSQL     │   │
-│  │   (lgb_model.pkl)    │   │   │    User & Predictions    │   │
-│  └──────────────────────┘   │   └──────────────────────────┘   │
-└─────────────────────────────┴───────────────────────────────────┘
+                   ┌──────────────────────┐
+                   │   FastAPI (8000)     │
+                   │  ─────────────────   │
+                   │  • /auth/*           │ ← JWT Authentication
+                   │  • /model/*          │ ← ML Predictions
+                   │  • /features/*       │ ← Biomarker Analysis
+                   └──────────┬───────────┘
+                              │
+                              ▼
+                   ┌──────────────────────┐
+                   │   LightGBM Model     │
+                   │   StandardScaler     │
+                   │   50 Biomarkers      │
+                   └──────────────────────┘
 ```
 
 ---
@@ -66,21 +88,17 @@ This application provides a complete solution for predicting Parkinson's Disease
 - 🔮 **Real-time Prediction**: Upload CSV with proteomics data and get instant PD risk assessment
 - 📊 **Feature Importance**: Ranked list of protein biomarkers with importance scores
 - 🩺 **Risk Stratification**: Low, Moderate, High, Very High risk levels
-- 📈 **Model Metrics**: Access to accuracy, AUC, precision, recall, F1 scores
+- 📈 **Model Metrics**: Patient-level predictions with probability scores
 - 📁 **CSV/Excel Support**: Accept multiple file formats for data upload
-
-### Backend (Django)
-- 👤 **User Authentication**: JWT-based login and registration
-- 📜 **Prediction History**: Store and retrieve past predictions
-- 🔐 **Secure Password Storage**: Bcrypt hashing
-- 👨‍💼 **Admin Dashboard**: Django admin for user management
+- 🔐 **JWT Authentication**: Secure user registration and login
 
 ### Frontend (React Native)
 - 🎨 **Modern UI**: Beautiful gradient-based design with animations
 - 📱 **Mobile-First**: Optimized for iOS and Android
-- 📄 **File Upload**: Pick Excel/CSV files for analysis
+- 📄 **File Upload**: Pick Excel/CSV files for analysis  
 - 📊 **Result Visualization**: Interactive biomarker charts
 - 🔐 **Secure Auth Flow**: Login/Register with token storage
+- ⚡ **Real-time Updates**: Live prediction results from backend
 
 ---
 
@@ -88,12 +106,13 @@ This application provides a complete solution for predicting Parkinson's Disease
 
 | Layer | Technology |
 |-------|------------|
-| ML Model | LightGBM, scikit-learn |
-| Prediction API | FastAPI, Uvicorn |
-| Auth API | Django, Django REST Framework |
-| Database | SQLite (dev), PostgreSQL (prod) |
+| ML Model | LightGBM, scikit-learn, StandardScaler |
+| Backend API | FastAPI, Uvicorn, Python 3.8+ |
+| Authentication | JWT (Jose), Passlib (Bcrypt) |
 | Frontend | React Native, Expo |
-| Containerization | Docker, Docker Compose |
+| State & Navigation | React Navigation |
+| File Handling | Expo Document Picker |
+| Data Format | CSV/Excel (pandas) |
 
 ---
 

@@ -6,6 +6,7 @@ import {
   Animated,
   Dimensions,
   Easing,
+  TouchableOpacity,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, SIZES } from '../constants/theme';
@@ -500,6 +501,15 @@ export default function SplashScreen({ navigation }) {
           v1.0.0 | GNPC V1 Dataset
         </Text>
       </Animated.View>
+
+      {/* Skip Button for Testing */}
+      <TouchableOpacity
+        style={styles.skipButton}
+        onPress={() => navigation.replace('Home', { userName: 'Demo User' })}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.skipButtonText}>Skip to Demo</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -723,6 +733,24 @@ const styles = StyleSheet.create({
     fontSize: SIZES.tiny,
     letterSpacing: 0.5,
     fontWeight: '500',
+  },
+  skipButton: {
+    position: 'absolute',
+    top: 60,
+    right: SIZES.lg,
+    paddingVertical: SIZES.xs,
+    paddingHorizontal: SIZES.md,
+    borderRadius: SIZES.radiusMd,
+    backgroundColor: 'rgba(0, 212, 170, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 212, 170, 0.4)',
+    zIndex: 100,
+  },
+  skipButtonText: {
+    color: COLORS.accent,
+    fontSize: SIZES.small,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
 });
 

@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,8 @@ import {
   ScrollView,
   Animated,
   Dimensions,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,30 +16,91 @@ import { COLORS, SIZES, SHADOWS } from '../constants/theme';
 import { BIOMARKERS } from '../constants/data';
 import InteractiveBiomarkerChart from '../components/InteractiveBiomarkerChart';
 import GlassmorphicCard from '../components/GlassmorphicCard';
+import { fetchBiomarkers } from '../services/featureService';
 
 const { width } = Dimensions.get('window');
 
 export default function BiomarkersScreen({ navigation }) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const cardAnims = useRef(BIOMARKERS.map(() => new Animated.Value(0))).current;
+  const [biomarkers, setBiomarkers] = useState(BIOMARKERS); // Use default as fallback
+  const [loading, setLoading] = useState(true);
+  const cardAnims = useRef([]).current;
 
   useEffect(() => {
+    // Load biomarkers from backend
+    loadBiomarkers();
+
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 500,
       useNativeDriver: true,
     }).start();
-
-    // Staggered card animations
-    cardAnims.forEach((anim, index) => {
-      Animated.timing(anim, {
-        toValue: 1,
-        duration: 500,
-        delay: 200 + index * 80,
-        useNativeDriver: true,
-      }).start();
-    });
   }, []);
+
+  const loadBiomarkers = async () => {
+    try {
+      setLoading(true);
+      const response = await fetchBiomarkers();
+      
+      if (response.biomarkers && response.biomarkers.length > 0) {
+        // Transform backend data to match expected format
+        const transformedBiomarkers = response.biomarkers.map((bio, idx) => ({
+          id: bio.id || `biomarker-${idx + 1}`,
+          name: bio.name || bio.protein_name || 'Unknown Biomarker',
+          symbol: bio.symbol || (bio.name || '').slice(0, 8).toUpperCase(),
+          category: bio.category || 'Biomarker',
+          importance: bio.importance || 0,
+          description: bio.description || `Biomarker with importance score: ${(bio.importance || 0).toFixed(4)}`,
+          confidence: bio.confidence || 0.85,
+          direction: bio.direction || 'elevated',
+        }));
+        
+        setBiomarkers(transformedBiomarkers);
+        
+        // Initialize card animations
+        while (cardAnims.length < transformedBiomarkers.length) {
+          cardAnims.push(new Animated.Value(0));
+        }
+        
+        // Staggered card animations
+        cardAnims.forEach((anim, index) => {
+          if (index < transformedBiomarkers.length) {
+            Animated.timing(anim, {
+              toValue: 1,
+              duration: 500,
+              delay: 200 + index * 80,
+              useNativeDriver: true,
+            }).start();
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Error loading biomarkers:', error);
+      Alert.alert(
+        'Warning',
+        'Could not load biomarkers from server. Using default data.',
+        [{ text: 'OK' }]
+      );
+      
+      // Use default biomarkers as fallback
+      while (cardAnims.length < BIOMARKERS.length) {
+        cardAnims.push(new Animated.Value(0));
+      }
+      
+      cardAnims.forEach((anim, index) => {
+        if (index < BIOMARKERS.length) {
+          Animated.timing(anim, {
+            toValue: 1,
+            duration: 500,
+            delay: 200 + index * 80,
+            useNativeDriver: true,
+          }).start();
+        }
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getCategoryColor = (category) => {
     const colors = {
@@ -87,17 +150,17 @@ export default function BiomarkersScreen({ navigation }) {
         {/* Header Stats */}
         <Animated.View style={[styles.headerStats, { opacity: fadeAnim }]}>
           <View style={styles.headerStatItem}>
-            <Text style={styles.headerStatValue}>{BIOMARKERS.length}</Text>
+            <Text style={styles.headerStatValue}>{loading ? '...' : biomarkers.length}</Text>
             <Text style={styles.headerStatLabel}>Biomarkers</Text>
           </View>
           <View style={styles.headerStatDivider} />
           <View style={styles.headerStatItem}>
-            <Text style={styles.headerStatValue}>RF+LASSO</Text>
+            <Text style={styles.headerStatValue}>LightGBM</Text>
             <Text style={styles.headerStatLabel}>Selection</Text>
           </View>
           <View style={styles.headerStatDivider} />
           <View style={styles.headerStatItem}>
-            <Text style={styles.headerStatValue}>FNN</Text>
+            <Text style={styles.headerStatValue}>ML</Text>
             <Text style={styles.headerStatLabel}>Model</Text>
           </View>
         </Animated.View>
@@ -109,16 +172,25 @@ export default function BiomarkersScreen({ navigation }) {
         showsVerticalScrollIndicator={false}
       >
         {/* Interactive Biomarker Chart */}
-        <Animated.View style={{ opacity: fadeAnim, marginBottom: SIZES.lg }}>
+        {loading ? (
           <GlassmorphicCard variant="light" style={styles.chartCard}>
-            <InteractiveBiomarkerChart
-              biomarkers={BIOMARKERS}
-              onBiomarkerPress={(biomarker) => {
-                // Scroll to biomarker or show details
-              }}
-            />
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={COLORS.accent} />
+              <Text style={styles.loadingText}>Loading biomarkers...</Text>
+            </View>
           </GlassmorphicCard>
-        </Animated.View>
+        ) : (
+          <Animated.View style={{ opacity: fadeAnim, marginBottom: SIZES.lg }}>
+            <GlassmorphicCard variant="light" style={styles.chartCard}>
+              <InteractiveBiomarkerChart
+                biomarkers={biomarkers}
+                onBiomarkerPress={(biomarker) => {
+                  // Scroll to biomarker or show details
+                }}
+              />
+            </GlassmorphicCard>
+          </Animated.View>
+        )}
 
         {/* Info Card */}
         <Animated.View style={[styles.infoCard, { opacity: fadeAnim }]}>
@@ -128,19 +200,20 @@ export default function BiomarkersScreen({ navigation }) {
           <View style={styles.infoContent}>
             <Text style={styles.infoTitle}>About Biomarkers</Text>
             <Text style={styles.infoText}>
-              These biomarkers were identified using Random Forest feature importance 
-              and LASSO regularization on the GNPC V1 proteomic dataset.
+              These biomarkers were identified using LightGBM feature importance 
+              on the proteomics dataset. Top protein features are ranked by their 
+              contribution to Parkinson's Disease prediction.
             </Text>
           </View>
         </Animated.View>
 
         {/* Biomarker Cards */}
-        {BIOMARKERS.map((biomarker, index) => (
+        {biomarkers.map((biomarker, index) => (
           <Animated.View
             key={biomarker.id}
             style={[
               styles.biomarkerCard,
-              {
+              cardAnims[index] && {
                 opacity: cardAnims[index],
                 transform: [
                   {
@@ -325,6 +398,17 @@ const styles = StyleSheet.create({
     marginBottom: SIZES.lg,
     padding: 0,
     overflow: 'hidden',
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SIZES.xxl,
+    minHeight: 250,
+  },
+  loadingText: {
+    color: COLORS.gray,
+    marginTop: SIZES.md,
+    fontSize: SIZES.regular,
   },
   infoCard: {
     flexDirection: 'row',

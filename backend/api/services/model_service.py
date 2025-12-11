@@ -247,3 +247,4 @@ def get_model_service() -> ModelService:
     if _model_service is None:
         _model_service = ModelService()
     return _model_service
+

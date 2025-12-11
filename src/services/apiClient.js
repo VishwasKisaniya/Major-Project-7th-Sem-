@@ -1,15 +1,14 @@
 /**
  * API Client for Parkinson's Proteomics AI
- * Connects to FastAPI backend for predictions and Django for auth
+ * Connects to Django backend for auth and FastAPI backend for ML predictions
  */
+import { API_CONFIG, getFullUrl } from '../config/api.config';
 
-// Backend URLs - Update these with your server IP for mobile testing
-const FASTAPI_URL = 'http://localhost:8000/api/v1';
-const DJANGO_URL = 'http://localhost:8001/api/v1/django';
+// Django backend for authentication (port 8001)
+const DJANGO_URL = 'http://localhost:8001';
 
-// For Expo development, use your machine's IP:
-// const FASTAPI_URL = 'http://192.168.1.x:8000/api/v1';
-// const DJANGO_URL = 'http://192.168.1.x:8001/api/v1/django';
+// FastAPI backend for ML predictions (port 8000)
+const FASTAPI_URL = API_CONFIG.BASE_URL;
 
 // Token storage
 let authToken = null;
@@ -71,16 +70,41 @@ async function request(url, options = {}) {
 
 /**
  * Upload file (multipart/form-data)
+ * Handles both web and React Native file uploads
  */
 async function uploadFile(url, file, fieldName = 'file') {
   const formData = new FormData();
-  formData.append(fieldName, {
-    uri: file.uri,
-    type: file.mimeType || 'text/csv',
-    name: file.name,
-  });
+  
+  // Check if running on web (file.uri starts with blob: or data:)
+  const isWeb = typeof window !== 'undefined' && 
+    (file.uri?.startsWith('blob:') || file.uri?.startsWith('data:') || !file.uri?.startsWith('file:'));
+  
+  if (isWeb && file.uri) {
+    // Web: Fetch the blob and append it properly
+    try {
+      const response = await fetch(file.uri);
+      const blob = await response.blob();
+      formData.append(fieldName, blob, file.name || 'upload.csv');
+    } catch (e) {
+      // Fallback: try direct append
+      formData.append(fieldName, {
+        uri: file.uri,
+        type: file.mimeType || 'text/csv',
+        name: file.name || 'upload.csv',
+      });
+    }
+  } else {
+    // React Native: Use the standard format
+    formData.append(fieldName, {
+      uri: file.uri,
+      type: file.mimeType || 'text/csv',
+      name: file.name || 'upload.csv',
+    });
+  }
 
+  // Don't set Content-Type - let browser/RN set it with boundary
   const headers = {};
+  
   if (authToken) {
     headers['Authorization'] = `Bearer ${authToken}`;
   }
@@ -95,7 +119,7 @@ async function uploadFile(url, file, fieldName = 'file') {
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.detail || 'Upload failed');
+      throw new Error(data.detail || data.error || 'Upload failed');
     }
 
     return data;
@@ -106,20 +130,26 @@ async function uploadFile(url, file, fieldName = 'file') {
 }
 
 // =============================================================================
-// AUTHENTICATION APIs (FastAPI)
+// AUTHENTICATION APIs (Django)
 // =============================================================================
 
 /**
  * Register a new user
  */
 export async function signup({ name, email, password }) {
-  const data = await request(`${FASTAPI_URL}/auth/signup`, {
+  const data = await request(`${DJANGO_URL}/api/v1/django/auth/signup/`, {
     method: 'POST',
-    body: { name, email, password },
+    body: { 
+      name, 
+      email, 
+      password,
+      password_confirm: password  // Django expects password confirmation
+    },
   });
   
-  if (data.access_token) {
-    setAuthToken(data.access_token);
+  // Django returns tokens.access, not just access
+  if (data.tokens && data.tokens.access) {
+    setAuthToken(data.tokens.access);
   }
   
   return data;
@@ -129,13 +159,14 @@ export async function signup({ name, email, password }) {
  * Login user
  */
 export async function login({ email, password }) {
-  const data = await request(`${FASTAPI_URL}/auth/login`, {
+  const data = await request(`${DJANGO_URL}/api/v1/django/auth/login/`, {
     method: 'POST',
     body: { email, password },
   });
   
-  if (data.access_token) {
-    setAuthToken(data.access_token);
+  // Django returns tokens.access, not just access
+  if (data.tokens && data.tokens.access) {
+    setAuthToken(data.tokens.access);
   }
   
   return data;
@@ -145,6 +176,14 @@ export async function login({ email, password }) {
  * Logout user
  */
 export async function logout() {
+  try {
+    await request(`${DJANGO_URL}/api/v1/django/auth/logout/`, {
+      method: 'POST',
+    });
+  } catch (error) {
+    // Logout might fail if token is invalid, that's ok
+    console.log('Logout error:', error);
+  }
   clearAuthToken();
   return { message: 'Logged out successfully' };
 }
@@ -153,32 +192,12 @@ export async function logout() {
  * Get current user profile
  */
 export async function getProfile() {
-  return request(`${FASTAPI_URL}/auth/me`);
+  return request(`${DJANGO_URL}/api/v1/django/auth/profile/`);
 }
 
 // =============================================================================
 // PREDICTION APIs (FastAPI)
 // =============================================================================
-
-/**
- * Run inference with proteomics data
- */
-export async function runInference({ formData, proteinData }) {
-  // Convert protein data to API format
-  const proteomics = (proteinData?.allProteins || proteinData?.topProteins || [])
-    .map((p, index) => ({
-      name: p.name || `Protein_${index + 1}`,
-      value: p.value || p.importance || Math.random() * 2,
-    }));
-
-  return request(`${FASTAPI_URL}/model/infer`, {
-    method: 'POST',
-    body: {
-      patient: formData,
-      proteomics,
-    },
-  });
-}
 
 /**
  * Upload CSV file for prediction
@@ -227,34 +246,13 @@ export async function getCategories() {
 }
 
 // =============================================================================
-// PREDICTION HISTORY APIs (Django)
-// =============================================================================
-
-/**
- * Get prediction history
- */
-export async function getPredictionHistory() {
-  return request(`${DJANGO_URL}/predictions/history/`);
-}
-
-/**
- * Get specific prediction detail
- */
-export async function getPredictionDetail(id) {
-  return request(`${DJANGO_URL}/predictions/history/${id}/`);
-}
-
-// =============================================================================
 // DEFAULT EXPORT (for compatibility with existing code)
 // =============================================================================
 
 const api = {
   request: (path, options) => {
-    // Determine which base URL to use
-    const baseUrl = path.startsWith('/auth') || path.startsWith('/model') || path.startsWith('/features')
-      ? FASTAPI_URL
-      : DJANGO_URL;
-    
+    // By default use Django for auth endpoints, FastAPI for others
+    const baseUrl = path.includes('/auth/') ? DJANGO_URL : FASTAPI_URL;
     return request(`${baseUrl}${path}`, {
       method: options.method || 'GET',
       body: options.body,

@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -13,27 +14,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, SIZES, SHADOWS } from '../constants/theme';
 import GlassmorphicCard from '../components/GlassmorphicCard';
-
-const generateSyntheticProteins = () => {
-  return Array.from({ length: 50 }).map((_, index) => {
-    const importance = Math.random() * 0.6 + 0.35; // 0.35 - 0.95
-    return {
-      id: `protein-${index + 1}`,
-      name: `Protein ${index + 1}`,
-      symbol: `P${index + 1}`,
-      importance: Math.min(1, importance),
-      category: index % 2 === 0 ? 'Neuroinflammation' : 'Synaptic Function',
-      description: 'Proteomic feature captured from uploaded sheet',
-      direction: index % 3 === 0 ? 'elevated' : 'decreased',
-      value: Math.random() * 2,
-    };
-  });
-};
+import { predictCSV } from '../services/modelService';
 
 export default function UploadScreen({ navigation, route }) {
   const { quickTest } = route?.params || {};
   const [selectedFile, setSelectedFile] = useState(null);
-  const [proteinData, setProteinData] = useState([]);
+  const [predictionResult, setPredictionResult] = useState(null);
+  const [loading, setLoading] = useState(false);
 
   const handlePick = async () => {
     try {
@@ -52,39 +39,117 @@ export default function UploadScreen({ navigation, route }) {
       const asset = result.assets?.[0];
       if (!asset) return;
 
-      // Demo parsing: generate synthetic 50-protein vector after "upload"
-      const proteins = generateSyntheticProteins();
-
       setSelectedFile({
         name: asset.name,
         size: asset.size,
+        uri: asset.uri,
+        mimeType: asset.mimeType || 'text/csv',
       });
-      setProteinData(proteins);
 
-      Alert.alert('Upload captured', '50 proteomic features ready for analysis.');
+      // Upload to backend for prediction
+      setLoading(true);
+      try {
+        const prediction = await predictCSV({
+          uri: asset.uri,
+          name: asset.name,
+          mimeType: asset.mimeType || 'text/csv',
+        });
+
+        if (prediction.success) {
+          setPredictionResult(prediction);
+          Alert.alert(
+            'Analysis Complete',
+            `Successfully analyzed ${prediction.summary.total_patients} patient(s). ` +
+            `Found ${prediction.summary.pd_positive} with Parkinson's risk.`
+          );
+        } else {
+          throw new Error(prediction.message || 'Prediction failed');
+        }
+      } catch (error) {
+        console.error('Prediction error:', error);
+        Alert.alert(
+          'Analysis Failed',
+          error.message || 'Could not analyze the file. Please ensure it has the correct format with 50 protein biomarkers.'
+        );
+        setSelectedFile(null);
+        setPredictionResult(null);
+      } finally {
+        setLoading(false);
+      }
     } catch (e) {
+      console.error('File picker error:', e);
       Alert.alert('Upload failed', 'Could not read the file. Please try again.');
     }
   };
 
   const handleContinue = () => {
-    if (!selectedFile || proteinData.length === 0) {
-      Alert.alert('Upload required', 'Please upload the proteomics Excel/CSV first.');
+    if (!selectedFile || !predictionResult) {
+      Alert.alert('Upload required', 'Please upload and analyze the proteomics file first.');
       return;
     }
 
-    const topProteins = [...proteinData]
-      .sort((a, b) => b.importance - a.importance)
-      .slice(0, 10);
+    // Convert top biomarkers from prediction result
+    const topBiomarkers = predictionResult.top_biomarkers?.slice(0, 10).map((bio, idx) => ({
+      id: `protein-${idx + 1}`,
+      name: bio.protein_name || bio.feature || bio.name || bio.name,
+      symbol: (bio.feature || bio.name || `P${idx + 1}`).replace('seq_', '').toUpperCase().slice(0, 8),
+      importance: bio.importance || bio.importance_normalized || 0,
+      category: bio.category || 'Biomarker',
+      description: `${bio.protein_name || bio.name} - Importance: ${(bio.importance || 0).toFixed(4)}`,
+      direction: idx % 3 === 0 ? 'elevated' : 'decreased',
+      value: bio.importance || 0,
+    })) || [];
 
-    navigation.navigate('Input', {
-      proteinData: {
-        fileName: selectedFile.name,
-        total: proteinData.length,
-        topProteins,
-        allProteins: proteinData,
-      },
-      quickTest: !!quickTest,
+    // Calculate overall prediction stats (like Flask app)
+    const totalPatients = predictionResult.summary.total_patients;
+    const pdPositive = predictionResult.summary.pd_positive;
+    const pdNegative = predictionResult.summary.pd_negative;
+    
+    // Calculate average probability across all patients
+    const avgProbability = predictionResult.patients?.reduce((sum, p) => sum + p.probability, 0) / totalPatients || 0;
+    const avgProbabilityDecimal = avgProbability / 100; // Convert to 0-1 range
+    
+    // Determine if overall result is positive (majority vote)
+    const isPositive = pdPositive > pdNegative;
+    
+    // Calculate confidence based on how far average probability is from 0.5 (like Flask)
+    const confidenceDelta = Math.abs(avgProbabilityDecimal - 0.5);
+    let confidenceLevel = 'Low';
+    if (confidenceDelta > 0.3) {
+      confidenceLevel = 'High';
+    } else if (confidenceDelta > 0.15) {
+      confidenceLevel = 'Medium';
+    }
+    
+    // Determine risk level based on average probability
+    let riskLevel = 'Low';
+    if (avgProbability >= 75) {
+      riskLevel = 'Very High';
+    } else if (avgProbability >= 60) {
+      riskLevel = 'High';
+    } else if (avgProbability >= 40) {
+      riskLevel = 'Moderate';
+    }
+    
+    // Create prediction object matching ResultScreen expectations
+    const prediction = {
+      isPositive: isPositive,
+      confidence: avgProbabilityDecimal, // 0-1 range for display as percentage
+      riskScore: avgProbabilityDecimal, // 0-1 range for risk meter
+      riskLevel: riskLevel,
+      probability: avgProbability, // 0-100 range
+      totalPatients: totalPatients,
+      pdPositive: pdPositive,
+      pdNegative: pdNegative,
+    };
+
+    // Navigate to Result screen with prediction data
+    navigation.navigate('Result', {
+      prediction: prediction,
+      predictionResult: predictionResult,
+      fileName: selectedFile.name,
+      biomarkers: topBiomarkers,
+      topProteins: topBiomarkers,
     });
   };
 
@@ -122,28 +187,39 @@ export default function UploadScreen({ navigation, route }) {
               </View>
             </View>
 
-            <TouchableOpacity style={styles.uploadButton} activeOpacity={0.9} onPress={handlePick}>
+            <TouchableOpacity style={styles.uploadButton} activeOpacity={0.9} onPress={handlePick} disabled={loading}>
               <LinearGradient
                 colors={[COLORS.accent, COLORS.accentDark]}
                 style={styles.uploadButtonBg}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
               >
-                <Ionicons name="document-attach" size={20} color={COLORS.white} />
-                <Text style={styles.uploadText}>
-                  {selectedFile ? 'Replace file' : 'Upload Excel/CSV'}
-                </Text>
+                {loading ? (
+                  <>
+                    <ActivityIndicator color={COLORS.white} />
+                    <Text style={styles.uploadText}>Analyzing...</Text>
+                  </>
+                ) : (
+                  <>
+                    <Ionicons name="document-attach" size={20} color={COLORS.white} />
+                    <Text style={styles.uploadText}>
+                      {selectedFile ? 'Replace & Re-analyze' : 'Upload & Analyze CSV'}
+                    </Text>
+                  </>
+                )}
               </LinearGradient>
             </TouchableOpacity>
 
-            {selectedFile && (
+            {selectedFile && predictionResult && (
               <View style={styles.fileInfo}>
                 <View style={styles.fileRow}>
                   <Ionicons name="checkmark-circle" size={20} color={COLORS.success} />
                   <Text style={styles.fileName}>{selectedFile.name}</Text>
                 </View>
                 <Text style={styles.fileMeta}>
-                  {proteinData.length} proteins captured • ready for analysis
+                  {predictionResult.summary.total_patients} patient(s) analyzed • 
+                  {' '}{predictionResult.summary.pd_positive} PD positive • 
+                  {' '}{predictionResult.summary.pd_negative} healthy
                 </Text>
               </View>
             )}
@@ -156,26 +232,31 @@ export default function UploadScreen({ navigation, route }) {
             </View>
             <View style={styles.bulletRow}>
               <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
-              <Text style={styles.bullet}>Validate 50-length proteomic vector</Text>
+              <Text style={styles.bullet}>Upload CSV with 50 protein biomarkers</Text>
             </View>
             <View style={styles.bulletRow}>
               <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
-              <Text style={styles.bullet}>Rank top 10 proteins by influence</Text>
+              <Text style={styles.bullet}>Real-time ML prediction using LightGBM model</Text>
             </View>
             <View style={styles.bulletRow}>
               <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
-              <Text style={styles.bullet}>Pass data to AI pipeline before analysis</Text>
+              <Text style={styles.bullet}>Feature importance analysis for each patient</Text>
             </View>
           </GlassmorphicCard>
 
-          <TouchableOpacity style={styles.continueButton} activeOpacity={0.9} onPress={handleContinue}>
+          <TouchableOpacity 
+            style={[styles.continueButton, (!selectedFile || !predictionResult || loading) && styles.disabledButton]} 
+            activeOpacity={0.9} 
+            onPress={handleContinue}
+            disabled={!selectedFile || !predictionResult || loading}
+          >
             <LinearGradient
-              colors={[COLORS.accent, COLORS.accentDark]}
+              colors={(!selectedFile || !predictionResult || loading) ? ['#555', '#444'] : [COLORS.accent, COLORS.accentDark]}
               style={styles.continueBg}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
             >
-              <Text style={styles.continueText}>Proceed to Patient Intake</Text>
+              <Text style={styles.continueText}>View Results</Text>
               <Ionicons name="arrow-forward-circle" size={22} color={COLORS.white} />
             </LinearGradient>
           </TouchableOpacity>
@@ -312,6 +393,9 @@ const styles = StyleSheet.create({
     borderRadius: SIZES.radiusLg,
     overflow: 'hidden',
     ...SHADOWS.medium,
+  },
+  disabledButton: {
+    opacity: 0.6,
   },
   continueBg: {
     flexDirection: 'row',

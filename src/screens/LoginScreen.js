@@ -133,6 +133,15 @@ export default function LoginScreen({ navigation, route }) {
                 New researcher? <Text style={styles.link}>Create account</Text>
               </Text>
             </TouchableOpacity>
+
+            {/* Demo Mode Button for Testing */}
+            <TouchableOpacity 
+              onPress={() => navigation.replace('Home', { userName: 'Demo User' })} 
+              style={styles.demoButton}
+            >
+              <Ionicons name="flash" size={16} color={COLORS.accent} />
+              <Text style={styles.demoButtonText}>Demo Mode (Skip Login)</Text>
+            </TouchableOpacity>
           </View>
 
           <Text style={styles.footer}>Designed and Developed by Manav Rai • All Rights Reserved</Text>
@@ -257,6 +266,25 @@ const styles = StyleSheet.create({
   },
   link: {
     color: COLORS.accent,
+  },
+  demoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: SIZES.md,
+    paddingVertical: SIZES.sm,
+    paddingHorizontal: SIZES.md,
+    borderRadius: SIZES.radiusMd,
+    backgroundColor: 'rgba(0, 212, 170, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 212, 170, 0.3)',
+    gap: 6,
+  },
+  demoButtonText: {
+    color: COLORS.accent,
+    fontWeight: '700',
+    fontSize: SIZES.small,
+    letterSpacing: 0.3,
   },
   footer: {
     marginTop: SIZES.lg,
