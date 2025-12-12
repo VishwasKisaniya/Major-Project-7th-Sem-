@@ -1,12 +1,30 @@
 services:
+  # FastAPI Service (ML Predictions)
   - type: web
-    name: parkinsons-api
+    name: parkinsons-fastapi
     runtime: python
     plan: free
-    buildCommand: "pip install --upgrade pip && pip install --only-binary=:all: -r requirements.txt"
+    buildCommand: "pip install --upgrade pip && pip install -r requirements.txt"
     startCommand: "uvicorn api.main:app --host 0.0.0.0 --port $PORT"
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
-      - key: PORT
-        value: 8000
+      - key: CORS_ORIGINS
+        value: "*"
+    
+  # Django Service (Authentication & User Management)
+  - type: web
+    name: parkinsons-django
+    runtime: python
+    plan: free
+    buildCommand: "pip install --upgrade pip && pip install -r requirements.txt"
+    startCommand: "python manage.py migrate && gunicorn django_app.wsgi:application --bind 0.0.0.0:$PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "False"
+      - key: ALLOWED_HOSTS
+        value: "*"
